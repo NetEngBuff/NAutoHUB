@@ -64,11 +64,18 @@ echo "deb [signed-by=/etc/apt/keyrings/jenkins-keyring.asc] https://pkg.jenkins.
 sudo apt-get update && sudo apt-get install -y jenkins
 sudo systemctl enable --now jenkins
 
-echo "[9/12] Setting up Python 3.12 environment..."
-# We install python3.12-dev specifically so easysnmp can compile its C-extensions
-sudo apt install -y python3.12-venv python3.12-dev python3-pip
+echo "[9/12] Adding Python PPA and setting up 3.12..."
+# 1. Ensure we can add PPA repositories
+sudo apt-get install -y software-properties-common
 
-# Create the venv specifically with 3.12 to avoid 3.13 compilation errors
+# 2. Add the Deadsnakes PPA (The gold standard for Python versions)
+sudo add-apt-repository ppa:deadsnakes/ppa -y
+sudo apt-get update
+
+# 3. Now install Python 3.12 and the dev headers
+sudo apt install -y python3.12-venv python3.12-dev
+
+# 4. Create the venv specifically with 3.12
 if [ ! -d "venv" ]; then
     python3.12 -m venv venv
 fi
