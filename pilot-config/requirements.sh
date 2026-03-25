@@ -64,20 +64,30 @@ echo "deb [signed-by=/etc/apt/keyrings/jenkins-keyring.asc] https://pkg.jenkins.
 sudo apt-get update && sudo apt-get install -y jenkins
 sudo systemctl enable --now jenkins
 
-echo "[9/12] Adding Python PPA and setting up 3.12..."
-# 1. Ensure we can add PPA repositories
-sudo apt-get install -y software-properties-common
+echo "[9/12] Ensuring Python 3.12 via pyenv..."
+# Install build dependencies for compiling Python
+sudo apt install -y build-essential libssl-dev zlib1g-dev \
+libbz2-dev libreadline-dev libsqlite3-dev curl \
+libncurses-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
 
-# 2. Add the Deadsnakes PPA (The gold standard for Python versions)
-sudo add-apt-repository ppa:deadsnakes/ppa -y
-sudo apt-get update
+# Install pyenv if it's not already there
+if [ ! -d "$HOME/.pyenv" ]; then
+    curl https://pyenv.run | bash
+fi
 
-# 3. Now install Python 3.12 and the dev headers
-sudo apt install -y python3.12-venv python3.12-dev
+# Load pyenv into the script's current shell session
+export PATH="$HOME/.pyenv/bin:$PATH"
+eval "$(pyenv init -)"
 
-# 4. Create the venv specifically with 3.12
+# Install 3.12.8 if not already present
+if ! pyenv versions | grep -q "3.12.8"; then
+    pyenv install 3.12.8
+fi
+pyenv shell 3.12.8
+
+# Create the venv using the pyenv-managed Python
 if [ ! -d "venv" ]; then
-    python3.12 -m venv venv
+    $(pyenv which python) -m venv venv
 fi
 
 echo "[10/12] Installing Network & Automation tools..."
@@ -87,14 +97,9 @@ sudo add-apt-repository universe -y
 sudo download-mibs || true
 
 echo "[11/12] Installing Python packages..."
-SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
-REQ_FILE="${SCRIPT_DIR}/requirements.txt"
-
-if [[ -f "$REQ_FILE" ]]; then
-    # Upgrade build tools first to help easysnmp build its "wheels"
-    ./venv/bin/pip install --upgrade pip setuptools wheel
-    ./venv/bin/pip install -r "$REQ_FILE"
-fi
+# Ensure we use the venv's pip specifically
+./venv/bin/pip install --upgrade pip setuptools wheel
+./venv/bin/pip install -r requirements.txt
 
 echo "[12/12] Finalizing Permissions..."
 sudo usermod -aG docker $USER || true
