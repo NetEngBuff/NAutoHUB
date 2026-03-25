@@ -18,15 +18,23 @@ for pkg in docker.io docker-doc docker-compose docker-compose-v2 podman-docker c
 done
 
 echo "[2/12] Setting up Docker repository..."
-sudo apt-get update
+# 1. Kill BOTH types of source files and keys
+sudo rm -f /etc/apt/sources.list.d/docker.list* /etc/apt/sources.list.d/docker.sources
+sudo rm -f /etc/apt/keyrings/docker.gpg /etc/apt/keyrings/docker.asc
+
+# 2. Re-setup
+sudo apt-get update || true
 sudo apt-get install -y ca-certificates curl gnupg
 sudo install -m 0755 -d /etc/apt/keyrings
-# Force overwrite existing key to prevent prompt
+
+# 3. Import Key
 curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor --yes -o /etc/apt/keyrings/docker.gpg
 sudo chmod a+r /etc/apt/keyrings/docker.gpg
 
+# 4. Add the repo as a standard .list file
 echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
 
+# 5. This update should now succeed 100%
 sudo apt-get update
 sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
