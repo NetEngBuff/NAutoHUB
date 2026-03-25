@@ -52,7 +52,7 @@ This guide walks you through setting up the NAutoHUB
  ```bash
  mkdir -p ~/projects
  cd ~/projects
- git clone https://github.com/CUBoulder-Ashwin/NAutoHUB.git
+ git clone https://github.com/NetEngBuff/NAutoHUB.git
  ```
 
 #### 2. Create executables:
