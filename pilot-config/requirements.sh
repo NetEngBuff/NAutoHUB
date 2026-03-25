@@ -64,32 +64,18 @@ echo "deb [signed-by=/etc/apt/keyrings/jenkins-keyring.asc] https://pkg.jenkins.
 sudo apt-get update && sudo apt-get install -y jenkins
 sudo systemctl enable --now jenkins
 
-echo "[9/12] Ensuring Python 3.12 via pyenv..."
-# Install build dependencies for compiling Python
-sudo apt install -y build-essential libssl-dev zlib1g-dev \
-libbz2-dev libreadline-dev libsqlite3-dev curl \
-libncurses-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
-
-# Install pyenv if it's not already there
-if [ ! -d "$HOME/.pyenv" ]; then
-    curl https://pyenv.run | bash
-fi
-
-# Load pyenv into the script's current shell session
-export PATH="$HOME/.pyenv/bin:$PATH"
+echo "[9/12] Setting up Python 3.12 via pyenv..."
+# Load pyenv paths
+export PYENV_ROOT="$HOME/.pyenv"
+export PATH="$PYENV_ROOT/bin:$PATH"
 eval "$(pyenv init -)"
 
-# Install 3.12.8 if not already present
-if ! pyenv versions | grep -q "3.12.8"; then
-    pyenv install 3.12.8
-fi
+# Ensure we are using 3.12 before creating the venv
 pyenv shell 3.12.8
 
-# Create the venv using the pyenv-managed Python
-if [ ! -d "venv" ]; then
-    $(pyenv which python) -m venv venv
-fi
-
+# Recreate venv if it's the wrong version or missing
+rm -rf venv
+python -m venv venv
 echo "[10/12] Installing Network & Automation tools..."
 sudo apt-get install -y software-properties-common libsnmp-dev snmp snmpd snmptrapd snmp-mibs-downloader gcc syslog-ng telegraf git-lfs gnmic xdg-utils graphviz socat netplan.io net-tools
 
