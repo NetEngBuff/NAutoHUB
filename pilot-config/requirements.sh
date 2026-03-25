@@ -71,7 +71,10 @@ if [ ! -d "venv" ]; then
 fi
 
 echo "[10/12] Installing Network & Automation tools..."
-sudo apt-get install -y libsnmp-dev snmp snmpd snmptrapd snmp-mibs-downloader gcc python3-dev syslog-ng telegraf git-lfs gnmic xdg-utils graphviz socat netplan.io net-tools
+# Added software-properties-common here so add-apt-repository works
+sudo apt-get install -y software-properties-common libsnmp-dev snmp snmpd snmptrapd snmp-mibs-downloader gcc python3-dev syslog-ng telegraf git-lfs gnmic xdg-utils graphviz socat netplan.io net-tools
+
+# Now this command will work
 sudo add-apt-repository universe -y
 sudo download-mibs || true
 
