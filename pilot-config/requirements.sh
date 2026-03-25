@@ -64,25 +64,28 @@ echo "deb [signed-by=/etc/apt/keyrings/jenkins-keyring.asc] https://pkg.jenkins.
 sudo apt-get update && sudo apt-get install -y jenkins
 sudo systemctl enable --now jenkins
 
-echo "[9/12] Setting up Python environment..."
-sudo apt install -y python3-venv python3-pip
+echo "[9/12] Setting up Python 3.12 environment..."
+# We install python3.12-dev specifically so easysnmp can compile its C-extensions
+sudo apt install -y python3.12-venv python3.12-dev python3-pip
+
+# Create the venv specifically with 3.12 to avoid 3.13 compilation errors
 if [ ! -d "venv" ]; then
-    python3 -m venv venv
+    python3.12 -m venv venv
 fi
 
 echo "[10/12] Installing Network & Automation tools..."
-# Added software-properties-common here so add-apt-repository works
-sudo apt-get install -y software-properties-common libsnmp-dev snmp snmpd snmptrapd snmp-mibs-downloader gcc python3-dev syslog-ng telegraf git-lfs gnmic xdg-utils graphviz socat netplan.io net-tools
+sudo apt-get install -y software-properties-common libsnmp-dev snmp snmpd snmptrapd snmp-mibs-downloader gcc syslog-ng telegraf git-lfs gnmic xdg-utils graphviz socat netplan.io net-tools
 
-# Now this command will work
 sudo add-apt-repository universe -y
 sudo download-mibs || true
 
 echo "[11/12] Installing Python packages..."
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )"
 REQ_FILE="${SCRIPT_DIR}/requirements.txt"
+
 if [[ -f "$REQ_FILE" ]]; then
-    ./venv/bin/pip install --upgrade pip
+    # Upgrade build tools first to help easysnmp build its "wheels"
+    ./venv/bin/pip install --upgrade pip setuptools wheel
     ./venv/bin/pip install -r "$REQ_FILE"
 fi
 
