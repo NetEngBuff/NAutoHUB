@@ -47,14 +47,27 @@ sudo apt-get install -y openssh-server
 curl -sL https://containerlab.dev/setup | sudo bash -s "all"
 
 echo "[4/12] Installing InfluxDB 2.x..."
-wget -q https://repos.influxdata.com/influxdata-archive_compat.key
-# Updated SHA256 for the 2026 key
-echo "393e87fd81bb0a47a135d71867192913d9a2053d340cc7c7f610e3ceca00d6ef influxdata-archive_compat.key" | sha256sum --check -
-cat influxdata-archive_compat.key | gpg --dearmor --yes | sudo tee /etc/apt/keyrings/influxdata-archive.gpg > /dev/null
+# 1. Ensure curl and gnupg are there (just in case)
+sudo apt-get install -y curl gnupg
+
+# 2. Download the key using curl
+curl --silent --location -O https://repos.influxdata.com/influxdata-archive.key
+
+# 3. Verify the fingerprint and install the key
+# This matches the secure logic from the official website
+gpg --show-keys --with-fingerprint --with-colons ./influxdata-archive.key 2>&1 \
+| grep -q '^fpr:\+24C975CBA61A024EE1B631787C3D57159FC2F927:$' \
+&& cat influxdata-archive.key \
+| gpg --dearmor --yes \
+| sudo tee /etc/apt/keyrings/influxdata-archive.gpg > /dev/null
+
+# 4. Add the repository (using your OS codename dynamically)
 echo "deb [signed-by=/etc/apt/keyrings/influxdata-archive.gpg] https://repos.influxdata.com/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/influxdata.list
+
+# 5. Clean up the downloaded key file and install
+rm influxdata-archive.key
 sudo apt-get update && sudo apt-get install -y influxdb2
 sudo systemctl enable --now influxdb
-rm influxdata-archive_compat.key
 
 echo "[5/12] Installing Grafana..."
 wget -q -O - https://apt.grafana.com/gpg.key | gpg --dearmor --yes | sudo tee /etc/apt/keyrings/grafana.gpg > /dev/null
