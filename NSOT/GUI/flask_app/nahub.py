@@ -339,54 +339,50 @@ def deploy_topology_route():
             os.path.dirname(__file__), "..", "..", "..", "pilot-config", "topo.yml"
         )
     )
+    
     print("[INFO] Destroying old topology...")
-    try:
-        destroy_output = subprocess.check_output(
-            f"sudo containerlab destroy -t {yaml_path}",
-            shell=True,
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
-        print("[✔] Destroy output:")
-        print(destroy_output)
+    # Using result.run with capture_output=True to keep console clean
+    subprocess.run(f"containerlab destroy -t {yaml_path}", shell=True, capture_output=True, text=True)
 
+    # Cleanup directory
+    try:
         with open(yaml_path) as f:
             data = yaml.safe_load(f) or {}
-        lab_name = data.get("name", "unknown") if data else "unknown"
-
+        lab_name = data.get("name", "unknown")
         lab_dir = Path(yaml_path).parent / f"clab-{lab_name}"
         if lab_dir.exists() and lab_dir.is_dir():
             shutil.rmtree(lab_dir)
             print(f"[✔] Deleted old lab folder: {lab_dir}")
-        else:
-            print(f"[ℹ] Lab folder {lab_dir} not found or already deleted.")
-
-    except subprocess.CalledProcessError as e:
-        print("[ERROR] Failed to destroy old topology:")
-        print(e.output)
+    except Exception as e:
+        print(f"[ℹ] Lab folder cleanup skipped: {e}")
 
     print("[INFO] Deploying new topology...")
     try:
-        deploy_output = subprocess.check_output(
-            f"sudo containerlab deploy -t {yaml_path}",
+        # We capture output to prevent the "messy" terminal logs you saw earlier
+        result = subprocess.run(
+            f"containerlab deploy -t {yaml_path}",
             shell=True,
-            stderr=subprocess.STDOUT,
+            capture_output=True,
             text=True,
+            check=True
         )
+        
+        deploy_output = result.stdout
         time.sleep(2)
         update_gnmic_yaml_from_hosts()
-        subprocess.run(
-            ["sudo", "systemctl", "restart", "gnmic_nautohub.service"], check=True
-        )
+        
+        # System services still require sudo, ensure NOPASSWD is set in sudoers
+        subprocess.run(["sudo", "systemctl", "restart", "gnmic_nautohub.service"], check=True)
         subprocess.run(["sudo", "systemctl", "restart", "ipam.service"], check=True)
-        print("[✔] Deploy output:")
-        print(deploy_output)
+        
+        print("[✔] Deploy output captured successfully.")
         message = "✅ Containerlab topology deployed successfully."
 
     except subprocess.CalledProcessError as e:
-        print("[ERROR] Deployment failed:")
-        print(e.output)
-        message = f"❌ Failed to deploy topology:<br><pre>{e.output}</pre>"
+        # e.stderr or e.stdout contains the reason for failure (like "requires root privileges")
+        error_detail = e.stderr if e.stderr else e.stdout
+        print(f"[ERROR] Deployment failed: {error_detail}")
+        message = f"❌ Failed to deploy topology:<br><pre>{error_detail}</pre>"
 
     return render_template(
         "build_topology.html", docker_images=get_docker_images(), message=message
@@ -402,32 +398,30 @@ def delete_topology_route():
     )
     print("[INFO] Deleting topology...")
     try:
-        delete_output = subprocess.check_output(
-            f"sudo containerlab destroy -t {yaml_path}",
+        result = subprocess.run(
+            f"containerlab destroy -t {yaml_path}",
             shell=True,
-            stderr=subprocess.STDOUT,
+            capture_output=True,
             text=True,
+            check=True
         )
-        print("[✔] Destroy output:")
-        print(delete_output)
-
+        
+        # Re-verify lab name for folder cleanup
         with open(yaml_path) as f:
             data = yaml.safe_load(f)
         lab_name = data.get("name", "unknown")
-
         lab_dir = Path(yaml_path).parent / f"clab-{lab_name}"
+        
         if lab_dir.exists() and lab_dir.is_dir():
             shutil.rmtree(lab_dir)
-            print(f"[✔] Deleted lab folder: {lab_dir}")
-        else:
-            print(f"[ℹ] Lab folder {lab_dir} not found or already deleted.")
 
         message = "✅ Topology deleted successfully."
+        print("[✔] Topology destroyed and folder cleaned.")
 
     except subprocess.CalledProcessError as e:
-        print("[ERROR] Delete failed:")
-        print(e.output)
-        message = f"❌ Failed to delete topology:<br><pre>{e.output}</pre>"
+        error_detail = e.stderr if e.stderr else e.stdout
+        print(f"[ERROR] Delete failed: {error_detail}")
+        message = f"❌ Failed to delete topology:<br><pre>{error_detail}</pre>"
 
     return render_template(
         "build_topology.html", docker_images=get_docker_images(), message=message
