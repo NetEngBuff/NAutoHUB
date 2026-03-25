@@ -7,6 +7,21 @@
   <p class="page-description">View and manage your network's IP address inventory</p>
 </div>
 
+<!-- Status bar -->
+<div class="ipam-status-bar">
+  <div class="ipam-status-left">
+    <span class="ipam-pulse" id="ipam-pulse"></span>
+    <span>IPAM — polling every {{ poll_interval }}s</span>
+  </div>
+  <div class="ipam-status-right">
+    <span id="ipam-countdown-label">Next refresh in</span>
+    <span class="ipam-countdown-badge" id="ipam-countdown">{{ poll_interval }}s</span>
+    <div class="ipam-progress-track">
+      <div class="ipam-progress-bar" id="ipam-progress"></div>
+    </div>
+  </div>
+</div>
+
 <div class="table-container">
   <table class="table table-striped table-ipam">
     <thead>
@@ -17,8 +32,7 @@
         <th>Subnet Mask</th>
       </tr>
     </thead>
-    <tbody>
-      {% set current_device = None %}
+    <tbody id="ipam-tbody">
       {% for row in ipam_data %}
         {% set device_class = "device-" + row["Device Name"]|lower|replace(" ", "-") %}
         <tr class="{{ device_class }}" data-device="{{ device_class }}">
@@ -34,8 +48,7 @@
   </table>
 </div>
 
-{% if not ipam_data %}
-<div class="empty-state">
+<div id="ipam-empty" class="empty-state" style="display: {% if not ipam_data %}block{% else %}none{% endif %}">
   <div class="empty-state-icon">
     <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
       <ellipse cx="12" cy="5" rx="9" ry="3"/>
@@ -46,28 +59,151 @@
   <h3 class="empty-state-title">No IP addresses found</h3>
   <p class="empty-state-description">Deploy a topology to populate the IPAM database</p>
 </div>
-{% endif %}
+
+<style>
+.ipam-status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-4);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-secondary);
+}
+
+.ipam-status-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.ipam-status-right {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.ipam-pulse {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-success, #22c55e);
+  box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
+  animation: ipam-pulse 2s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+@keyframes ipam-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.5); }
+  70%  { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(34, 197, 94, 0); }
+}
+
+.ipam-countdown-badge {
+  font-variant-numeric: tabular-nums;
+  font-weight: var(--font-weight-semibold);
+  color: var(--color-primary);
+  min-width: 28px;
+  text-align: right;
+}
+
+.ipam-progress-track {
+  width: 80px;
+  height: 4px;
+  background: var(--color-border);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.ipam-progress-bar {
+  height: 100%;
+  background: var(--color-primary);
+  border-radius: var(--radius-full);
+  transition: width 1s linear;
+  width: 100%;
+}
+</style>
 
 <script>
-document.addEventListener('DOMContentLoaded', () => {
-  const rows = document.querySelectorAll('.table-ipam tbody tr');
+const POLL_INTERVAL = {{ poll_interval }};
+let secondsLeft = POLL_INTERVAL;
 
-  rows.forEach(row => {
+
+function bindHoverHighlight() {
+  document.querySelectorAll('.table-ipam tbody tr').forEach(row => {
     const deviceClass = row.dataset.device;
     if (!deviceClass) return;
-
     row.addEventListener('mouseenter', () => {
       document.querySelectorAll(`[data-device="${deviceClass}"]`).forEach(r => {
         r.style.backgroundColor = 'var(--color-primary-light)';
       });
     });
-
     row.addEventListener('mouseleave', () => {
       document.querySelectorAll(`[data-device="${deviceClass}"]`).forEach(r => {
         r.style.backgroundColor = '';
       });
     });
   });
+}
+
+function renderTable(data) {
+  const tbody = document.getElementById('ipam-tbody');
+  const empty = document.getElementById('ipam-empty');
+
+  if (!data || data.length === 0) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    return;
+  }
+
+  empty.style.display = 'none';
+  tbody.innerHTML = data.map(row => {
+    const deviceClass = `device-${row["Device Name"].toLowerCase().replace(/ /g, '-')}`;
+    const firstCell = row.rowspan
+      ? `<td rowspan="${row.rowspan}" class="hostname">${row["Device Name"]}</td>`
+      : '';
+    return `<tr class="${deviceClass}" data-device="${deviceClass}">
+      ${firstCell}
+      <td>${row["Interface Name"]}</td>
+      <td class="ip-address font-mono">${row["IP Address"]}</td>
+      <td class="font-mono">${row["Subnet Mask"]}</td>
+    </tr>`;
+  }).join('');
+
+  bindHoverHighlight();
+}
+
+function fetchAndRefresh() {
+  fetch('/ipam-data')
+    .then(r => r.json())
+    .then(res => {
+      renderTable(res.data);
+      secondsLeft = res.interval;
+    })
+    .catch(() => {});
+}
+
+// Countdown tick every second
+function tick() {
+  secondsLeft = Math.max(0, secondsLeft - 1);
+  document.getElementById('ipam-countdown').textContent = `${secondsLeft}s`;
+  document.getElementById('ipam-progress').style.width =
+    `${(secondsLeft / POLL_INTERVAL) * 100}%`;
+
+  if (secondsLeft === 0) {
+    fetchAndRefresh();
+  }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  bindHoverHighlight();
+  fetchAndRefresh();           // immediate fetch on open
+  setInterval(tick, 1000);
 });
 </script>
 {% endblock %}

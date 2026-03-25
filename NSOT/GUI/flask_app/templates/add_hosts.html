@@ -7,6 +7,19 @@
   <p class="page-description">Build or append host entries to your inventory</p>
 </div>
 
+<div id="oob-banner" style="display:none; max-width: 700px; margin: 0 auto var(--space-4);">
+  <div class="alert alert-info" style="display:flex; align-items:center; gap: var(--space-3);">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0">
+      <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+    </svg>
+    <div>
+      OOB network detected: <strong id="oob-subnet-text"></strong> &mdash;
+      this host is <strong id="oob-host-text"></strong> on <strong id="oob-iface-text"></strong>.
+      Management IPs you enter must be on this subnet.
+    </div>
+  </div>
+</div>
+
 <div class="card card-elevated" style="max-width: 700px; margin: 0 auto;">
   <div class="card-body">
     <form method="POST" class="form" id="hosts-form">
@@ -37,8 +50,8 @@
               <input type="password" name="password[]" class="form-input" required>
             </div>
             <div class="form-group">
-              <label class="form-label">Management IP</label>
-              <input type="text" name="management_ip[]" class="form-input" placeholder="10.0.0.10" required>
+              <label class="form-label">Management IP <span id="oob-label-hint" class="oob-hint" style="display:none;"></span></label>
+              <input type="text" name="management_ip[]" class="form-input mgmt-ip-field" placeholder="10.0.0.10" required>
             </div>
           </div>
           <div class="form-group">
@@ -76,21 +89,80 @@
   </div>
 </div>
 
+<style>
+.fieldset-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+.fieldset-header .form-legend {
+  margin-bottom: 0;
+  padding: 0;
+}
+.oob-hint {
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-normal);
+  color: var(--color-primary);
+  background: var(--color-primary-light, rgba(99,102,241,0.1));
+  padding: 2px 8px;
+  border-radius: var(--radius-sm);
+  margin-left: var(--space-2);
+}
+.alert-info {
+  background: var(--color-primary-light, rgba(99,102,241,0.08));
+  border: 1px solid var(--color-primary);
+  color: var(--color-text-primary);
+  border-radius: var(--radius-md);
+  padding: var(--space-3) var(--space-4);
+}
+</style>
+
 <script>
+let oobPlaceholder = "10.0.0.10";
+
+function applyOobToField(input) {
+  input.placeholder = oobPlaceholder;
+}
+
+document.addEventListener("DOMContentLoaded", () => {
+  fetch("/oob-network-info")
+    .then(r => r.json())
+    .then(data => {
+      if (!data.subnet) return;
+
+      // Show banner
+      document.getElementById("oob-subnet-text").textContent = data.subnet;
+      document.getElementById("oob-host-text").textContent = data.host_ip;
+      document.getElementById("oob-iface-text").textContent = data.interface;
+      document.getElementById("oob-banner").style.display = "block";
+
+      // Update hint label
+      const hint = document.getElementById("oob-label-hint");
+      hint.textContent = "must be on " + data.subnet;
+      hint.style.display = "inline";
+
+      // Update placeholder on all existing mgmt IP fields
+      oobPlaceholder = data.subnet.replace(/\.\d+\/\d+$/, ".X");
+      document.querySelectorAll(".mgmt-ip-field").forEach(applyOobToField);
+    })
+    .catch(() => {});
+});
+
 function addDeviceForm() {
   const deviceForm = document.createElement('div');
   deviceForm.classList.add('device-form', 'form-fieldset');
   deviceForm.innerHTML = `
-    <legend class="form-legend">
-      Host Configuration
-      <button type="button" class="btn btn-danger btn-sm" onclick="this.closest('.device-form').remove()" style="float: right; margin-top: -4px;">
+    <div class="fieldset-header">
+      <span class="form-legend">Host Configuration</span>
+      <button type="button" class="btn btn-danger btn-sm" onclick="this.closest('.device-form').remove()">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <line x1="18" y1="6" x2="6" y2="18"/>
           <line x1="6" y1="6" x2="18" y2="18"/>
         </svg>
         Remove
       </button>
-    </legend>
+    </div>
     <div class="form-row">
       <div class="form-group">
         <label class="form-label">Hostname</label>
@@ -107,8 +179,8 @@ function addDeviceForm() {
         <input type="password" name="password[]" class="form-input" required>
       </div>
       <div class="form-group">
-        <label class="form-label">Management IP</label>
-        <input type="text" name="management_ip[]" class="form-input" placeholder="10.0.0.10" required>
+        <label class="form-label">Management IP <span class="oob-hint" style="${oobPlaceholder !== '10.0.0.10' ? '' : 'display:none;'}">must be on ${document.getElementById('oob-subnet-text')?.textContent || ''}</span></label>
+        <input type="text" name="management_ip[]" class="form-input mgmt-ip-field" placeholder="${oobPlaceholder}" required>
       </div>
     </div>
     <div class="form-group">

@@ -94,7 +94,7 @@
 </div>
 
 <!-- Loading Overlay -->
-<div class="modal-overlay" id="loading-overlay" style="display: none;">
+<div class="modal-overlay" id="loading-overlay">
   <div class="loading-container">
     <div class="loading-spinner"></div>
     <p class="loading-text" id="loading-text">Initializing...</p>
@@ -130,6 +130,49 @@
   transition: opacity 0.5s ease-in-out;
 }
 
+/* Fieldset header — keeps the gradient legend and remove button on the same row */
+.fieldset-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--space-4);
+}
+
+.fieldset-header .form-legend {
+  margin-bottom: 0;
+  padding: 0;
+}
+
+/* hosts.csv auto-fill pill */
+.hosts-pill {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-primary-light, rgba(99,102,241,0.07));
+  border: 1px solid var(--color-primary);
+  border-radius: var(--radius-md);
+  margin-bottom: var(--space-3);
+  font-size: var(--font-size-xs);
+}
+.pill-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--color-text-primary);
+  font-family: var(--font-mono, monospace);
+}
+.pill-badge {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: var(--font-weight-medium);
+  color: var(--color-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  opacity: 0.8;
+}
+
 /* Link row styling */
 .link-row-content {
   display: flex;
@@ -148,6 +191,7 @@ let dockerImages = {{ docker_images|tojson|safe }};
 let kinds = ["ceos", "linux"];
 let deviceRows = [];
 let linkRows = [];
+let hostsData = [];  // loaded from hosts.csv via /hosts-data
 
 const terms = [
   "Routing BGP packets to Valhalla...",
@@ -206,7 +250,11 @@ let index = 0;
 let rotateInterval;
 
 document.addEventListener("DOMContentLoaded", () => {
-  renderDeviceForms();
+  fetch("/hosts-data")
+    .then(r => r.json())
+    .then(data => { hostsData = data; })
+    .catch(() => {})
+    .finally(() => renderDeviceForms());
 });
 
 function rotateTerms() {
@@ -223,7 +271,7 @@ function showLoading(event) {
   event.preventDefault();
   const form = event.currentTarget;
   const overlay = document.getElementById("loading-overlay");
-  overlay.style.display = "flex";
+  overlay.classList.add("visible");
   rotateTerms();
   rotateInterval = setInterval(rotateTerms, 7000);
   requestAnimationFrame(() => requestAnimationFrame(() => form.submit()));
@@ -240,10 +288,46 @@ function collectCurrentDeviceData() {
       exec: form.querySelector(`[name="device_exec_${i}[]"]`)?.value || "",
       mgmt_ip: form.querySelector(`[name="device_mgmt_ip_${i}"]`)?.value || "",
       username: form.querySelector(`[name="device_username_${i}"]`)?.value || "",
-      password: form.querySelector(`[name="device_password_${i}"]`)?.value || ""
+      password: form.querySelector(`[name="device_password_${i}"]`)?.value || "",
     });
   });
   return updated;
+}
+
+function onDeviceSelect(i) {
+  const select = document.getElementById(`device-select-${i}`);
+  const chosen = hostsData.find(h => h.hostname === select.value);
+  const nameInput = document.querySelector(`[name="device_name_${i}"]`);
+  const mgmtInput = document.querySelector(`[name="device_mgmt_ip_${i}"]`);
+  const userInput = document.querySelector(`[name="device_username_${i}"]`);
+  const passInput = document.querySelector(`[name="device_password_${i}"]`);
+  const pill = document.getElementById(`hosts-pill-${i}`);
+
+  if (chosen) {
+    nameInput.value = chosen.hostname;
+    mgmtInput.value = chosen.management_ip;
+    userInput.value = chosen.username;
+    passInput.value = chosen.password;
+    pill.innerHTML = `
+      <span class="pill-item">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+        ${chosen.management_ip}
+      </span>
+      <span class="pill-item">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        ${chosen.username}
+      </span>
+      <span class="pill-badge">from hosts.csv</span>`;
+    pill.style.display = "flex";
+  } else {
+    nameInput.value = "";
+    mgmtInput.value = "";
+    userInput.value = "";
+    passInput.value = "";
+    pill.style.display = "none";
+  }
+  syncLinkJSON();
+  renderLinkRows();
 }
 
 function collectCurrentLinkData() {
@@ -277,70 +361,86 @@ function renderDeviceForms() {
   list.innerHTML = "";
   document.getElementById("connections-section").style.display = deviceRows.length > 0 ? "block" : "none";
 
+  const hostOptions = hostsData.length
+    ? hostsData.map(h => `<option value="${h.hostname}">${h.hostname}</option>`).join("")
+    : `<option value="" disabled>No hosts in hosts.csv</option>`;
+
   deviceRows.forEach((device, i) => {
     const form = document.createElement("div");
     form.classList.add("form-fieldset");
+    const pillDisplay = device.mgmt_ip ? "flex" : "none";
+    const pillHtml = device.mgmt_ip ? `
+      <span class="pill-item">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+        ${device.mgmt_ip}
+      </span>
+      <span class="pill-item">
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        ${device.username}
+      </span>
+      <span class="pill-badge">from hosts.csv</span>` : "";
+
     form.innerHTML = `
-      <legend class="form-legend">
-        Device ${i + 1}
-        <button type="button" class="btn btn-danger btn-sm" onclick="removeDeviceRow(${i})" style="float: right; margin-top: -4px;">
+      <div class="fieldset-header">
+        <span class="form-legend">Device ${i + 1}</span>
+        <button type="button" class="btn btn-danger btn-sm" onclick="removeDeviceRow(${i})">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <line x1="18" y1="6" x2="6" y2="18"/>
-            <line x1="6" y1="6" x2="18" y2="18"/>
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
           Remove
         </button>
-      </legend>
+      </div>
 
       <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">Name</label>
-          <input type="text" name="device_name_${i}" class="form-input" required value="${device.name || ''}">
+        <div class="form-group" style="flex:1.2">
+          <label class="form-label">Device</label>
+          <select id="device-select-${i}" class="form-select" required onchange="onDeviceSelect(${i})">
+            <option value="">— Select from hosts.csv —</option>
+            ${hostOptions}
+          </select>
         </div>
         <div class="form-group">
           <label class="form-label">Kind</label>
           <select name="device_kind_${i}" class="form-select" required onchange="toggleConfigExec(${i})" id="kind-${i}">
-            <option value="">-- Select Kind --</option>
+            <option value="">— Kind —</option>
             ${kinds.map(k => `<option value="${k}" ${k === device.kind ? "selected" : ""}>${k}</option>`).join("")}
+          </select>
+        </div>
+        <div class="form-group" style="flex:1.5">
+          <label class="form-label">Docker Image</label>
+          <select name="device_image_${i}" class="form-select" required>
+            <option value="">— Image —</option>
+            ${dockerImages.map(img => `<option value="${img}" ${img === device.image ? "selected" : ""}>${img}</option>`).join("")}
           </select>
         </div>
       </div>
 
-      <div class="form-group">
-        <label class="form-label">Docker Image</label>
-        <select name="device_image_${i}" class="form-select" required>
-          <option value="">-- Select Image --</option>
-          ${dockerImages.map(img => `<option value="${img}" ${img === device.image ? "selected" : ""}>${img}</option>`).join("")}
-        </select>
+      <div id="hosts-pill-${i}" class="hosts-pill" style="display:${pillDisplay}">
+        ${pillHtml}
       </div>
 
       <div id="config-section-${i}" class="form-group" style="display: ${device.kind === 'ceos' ? 'block' : 'none'};">
-        <label class="form-label">Config File (Optional)</label>
-        <input type="text" name="device_config_${i}" class="form-input" value="${device.config || ''}">
+        <label class="form-label">Startup Config <span style="font-weight:400;color:var(--color-text-muted)">(optional — auto-generated if blank)</span></label>
+        <input type="text" name="device_config_${i}" class="form-input" placeholder="Leave blank to auto-generate from day0 template" value="${device.config || ''}">
       </div>
 
       <div id="exec-section-${i}" class="form-group" style="display: ${device.kind === 'linux' ? 'block' : 'none'};">
-        <label class="form-label">Exec Commands (for linux)</label>
-        <textarea name="device_exec_${i}[]" class="form-textarea" rows="3">${device.exec || ''}</textarea>
+        <label class="form-label">Exec Commands</label>
+        <textarea name="device_exec_${i}[]" class="form-textarea" rows="2">${device.exec || ''}</textarea>
       </div>
 
-      <div class="form-group">
-        <label class="form-label">Management IP Address (with subnet)</label>
-        <input type="text" name="device_mgmt_ip_${i}" class="form-input" placeholder="10.0.0.1/24" value="${device.mgmt_ip || ''}">
-      </div>
-
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">SSH Username</label>
-          <input type="text" name="device_username_${i}" class="form-input" placeholder="admin" value="${device.username || ''}">
-        </div>
-        <div class="form-group">
-          <label class="form-label">SSH Password</label>
-          <input type="password" name="device_password_${i}" class="form-input" placeholder="admin" value="${device.password || ''}">
-        </div>
-      </div>
+      <input type="hidden" name="device_name_${i}" value="${device.name || ''}">
+      <input type="hidden" name="device_mgmt_ip_${i}" value="${device.mgmt_ip || ''}">
+      <input type="hidden" name="device_username_${i}" value="${device.username || ''}">
+      <input type="hidden" name="device_password_${i}" value="${device.password || ''}">
     `;
     list.appendChild(form);
+
+    // Re-select the right option if device already has a name
+    if (device.name) {
+      const sel = document.getElementById(`device-select-${i}`);
+      if (sel) sel.value = device.name;
+    }
   });
 
   for (let i = 0; i < deviceRows.length; i++) toggleConfigExec(i);
@@ -373,21 +473,25 @@ function renderLinkRows() {
   document.getElementById("link-count").value = linkRows.length;
 
   const devices = [...document.querySelectorAll('[name^="device_name_"]')].map(el => el.value.trim()).filter(Boolean);
+  // Also pick up any device that's been selected but whose hidden input is stale
+  document.querySelectorAll('[id^="device-select-"]').forEach(sel => {
+    if (sel.value && !devices.includes(sel.value)) devices.push(sel.value);
+  });
 
   linkRows.forEach((link, i) => {
     const row = document.createElement("div");
     row.classList.add("form-fieldset");
     row.innerHTML = `
-      <legend class="form-legend">
-        Link ${i + 1}
-        <button type="button" class="btn btn-danger btn-sm" onclick="removeLinkRow(${i})" style="float: right; margin-top: -4px;">
+      <div class="fieldset-header">
+        <span class="form-legend">Link ${i + 1}</span>
+        <button type="button" class="btn btn-danger btn-sm" onclick="removeLinkRow(${i})">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <line x1="18" y1="6" x2="6" y2="18"/>
             <line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
           Remove
         </button>
-      </legend>
+      </div>
       <div class="link-row-content">
         <div class="form-group" style="flex: 1;">
           <select name="link_dev1_${i}" class="form-select" onchange="updateLinkRow(${i}, 0)">

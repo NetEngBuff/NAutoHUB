@@ -8,6 +8,7 @@
 </div>
 
 <div class="grid grid-cols-3 gap-6">
+
   <!-- Golden Config Generator -->
   <div class="tool-card">
     <div class="tool-card-header">
@@ -15,22 +16,27 @@
       <p class="tool-card-description">Generate golden configuration snapshots</p>
     </div>
     <div class="tool-card-body">
-      <form method="POST" class="form">
+      <div class="form">
         <div class="form-group">
-          <label class="form-label">Device Name</label>
-          <input type="text" name="device" id="device-name" class="form-input" placeholder="Enter device name">
+          <label class="form-label">Device</label>
+          <select id="gc-device" class="form-select">
+            <option value="" disabled selected>Select Device</option>
+            {% for device in devices %}
+            <option value="{{ device }}">{{ device }}</option>
+            {% endfor %}
+          </select>
         </div>
         <div class="form-group">
           <label class="form-check">
-            <input type="checkbox" id="select-all" name="select_all" class="form-check-input" onclick="toggleInputFields()">
-            <span class="form-check-label">Select all devices from IPAM</span>
+            <input type="checkbox" id="gc-select-all" class="form-check-input" onchange="toggleGcDevice()">
+            <span class="form-check-label">All devices from hosts.csv</span>
           </label>
         </div>
-        <button type="submit" class="btn btn-primary btn-block">Generate Config</button>
-      </form>
-      {% if config_result %}
-      <div class="output-container mt-4">{{ config_result|safe }}</div>
-      {% endif %}
+        <button class="btn btn-primary btn-block" id="gc-btn" onclick="runGoldenConfig()">
+          Generate Config
+        </button>
+      </div>
+      <div id="gc-result" class="output-container mt-4" style="display:none;"></div>
     </div>
   </div>
 
@@ -41,10 +47,14 @@
       <p class="tool-card-description">Execute show commands on devices</p>
     </div>
     <div class="tool-card-body">
-      <form method="POST" class="form">
+      <div class="form">
+        <div id="show-no-device-alert" class="alert alert-error" style="display:none;">
+          <span class="alert-icon">&#10007;</span>
+          <div class="alert-content">Please select a device before executing a command.</div>
+        </div>
         <div class="form-group">
           <label class="form-label">Select Device</label>
-          <select name="selected_device" id="device-select" class="form-select">
+          <select id="show-device" class="form-select" onchange="clearShowAlert()">
             <option value="" disabled selected>Select Device</option>
             {% for device in devices %}
             <option value="{{ device }}">{{ device }}</option>
@@ -54,19 +64,19 @@
         <div class="form-group">
           <label class="form-label">Command Category</label>
           <div class="grid grid-cols-1 gap-2">
-            <select id="routing-dropdown" class="form-select form-input-sm" onchange="updateCommandField(this.value)">
+            <select class="form-select form-input-sm" onchange="setCommand(this.value)">
               <option value="" disabled selected>Routing Protocols</option>
               <option value="show ip bgp summary">BGP Summary</option>
               <option value="show ip ospf neighbor">OSPF Neighbor</option>
               <option value="show ip rip database">RIP Database</option>
             </select>
-            <select id="layer2-dropdown" class="form-select form-input-sm" onchange="updateCommandField(this.value)">
+            <select class="form-select form-input-sm" onchange="setCommand(this.value)">
               <option value="" disabled selected>Layer 2 Info</option>
               <option value="show mac address-table">MAC Address Table</option>
               <option value="show lldp neighbors">LLDP Neighbors</option>
               <option value="show vlan brief">VLAN Brief</option>
             </select>
-            <select id="general-dropdown" class="form-select form-input-sm" onchange="updateCommandField(this.value)">
+            <select class="form-select form-input-sm" onchange="setCommand(this.value)">
               <option value="" disabled selected>General Info</option>
               <option value="show version">Version</option>
               <option value="show running-config">Running Config</option>
@@ -76,10 +86,13 @@
         </div>
         <div class="form-group">
           <label class="form-label">Custom Command</label>
-          <input type="text" id="custom-command" name="command" class="form-input" placeholder="e.g., show version">
+          <input type="text" id="show-command" class="form-input" placeholder="e.g., show version">
         </div>
-        <button type="submit" class="btn btn-primary btn-block">Execute Command</button>
-      </form>
+        <button class="btn btn-primary btn-block" id="show-btn" onclick="runShowCommand()">
+          Execute Command
+        </button>
+      </div>
+      <div id="show-result" class="output-container mt-4" style="display:none;"></div>
     </div>
   </div>
 
@@ -90,55 +103,187 @@
       <p class="tool-card-description">Test network connectivity</p>
     </div>
     <div class="tool-card-body">
-      <form method="POST" class="form">
+      <div class="form">
         <div class="form-group">
           <label class="form-label">Source IP</label>
-          <input type="text" name="source" class="form-input" placeholder="localhost" required>
+          <input type="text" id="ping-source" class="form-input" placeholder="localhost">
         </div>
         <div class="form-group">
           <label class="form-label">Destination IP</label>
-          <input type="text" name="destination" class="form-input" required>
+          <input type="text" id="ping-dest" class="form-input">
         </div>
         <div class="form-group">
           <label class="form-label">SSH Username</label>
-          <input type="text" name="username" class="form-input" placeholder="root">
+          <input type="text" id="ping-user" class="form-input" placeholder="root">
         </div>
         <div class="form-group">
           <label class="form-label">SSH Password</label>
-          <input type="password" name="password" class="form-input">
+          <input type="password" id="ping-pass" class="form-input">
         </div>
-        <button type="submit" class="btn btn-primary btn-block">Run Ping Test</button>
-      </form>
-      {% if ping_result %}
-      <div class="output-container mt-4">{{ ping_result|safe }}</div>
-      {% endif %}
+        <button class="btn btn-primary btn-block" id="ping-btn" onclick="runPing()">
+          Run Ping Test
+        </button>
+      </div>
     </div>
   </div>
+
 </div>
 
-{% if show_result %}
-<div class="card card-elevated mt-6">
-  <div class="card-header">
-    <h4>Command Output</h4>
+<div id="show-output-card" class="card card-elevated mt-6" style="display:none;">
+  <div class="card-header" style="display:flex; align-items:center; justify-content:space-between;">
+    <h4 id="show-output-title">Output</h4>
+    <span id="show-output-badge" style="font-size:var(--font-size-xs);font-weight:var(--font-weight-semibold);border:1px solid;border-radius:var(--radius-sm);padding:2px 8px;"></span>
   </div>
   <div class="card-body">
-    <pre class="output-container" style="max-height: 400px;">{{ show_result|safe }}</pre>
+    <pre id="show-output-pre" class="output-container" style="max-height: 400px;"></pre>
   </div>
 </div>
-{% endif %}
+
+<style>
+.btn-loading-state {
+  opacity: 0.75;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+</style>
 
 <script>
-function toggleInputFields() {
-  const selectAll = document.getElementById('select-all');
-  const deviceName = document.getElementById('device-name');
-  deviceName.disabled = selectAll.checked;
-  if (selectAll.checked) {
-    deviceName.value = '';
+function setLoading(btnId, loading) {
+  const btn = document.getElementById(btnId);
+  if (loading) {
+    btn.dataset.originalText = btn.innerHTML;
+    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="animation:spin 0.8s linear infinite"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg> Running...`;
+    btn.classList.add('btn-loading-state');
+  } else {
+    btn.innerHTML = btn.dataset.originalText;
+    btn.classList.remove('btn-loading-state');
   }
 }
 
-function updateCommandField(value) {
-  document.getElementById('custom-command').value = value;
+function showResult(elId, html) {
+  const el = document.getElementById(elId);
+  el.style.display = 'block';
+  el.innerHTML = html;
+  el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function showOutputCard(title, text, success) {
+  const card = document.getElementById('show-output-card');
+  const titleEl = document.getElementById('show-output-title');
+  const pre = document.getElementById('show-output-pre');
+  const badge = document.getElementById('show-output-badge');
+
+  titleEl.textContent = title;
+  pre.textContent = text;
+  badge.textContent = success ? 'Success' : 'Failed';
+  badge.style.color = success ? 'var(--color-success)' : 'var(--color-error)';
+  badge.style.borderColor = success ? 'var(--color-success)' : 'var(--color-error)';
+
+  card.style.display = 'block';
+  card.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+// ── Ping ──────────────────────────────────────────────
+function runPing() {
+  const source = document.getElementById('ping-source').value.trim() || 'localhost';
+  const dest   = document.getElementById('ping-dest').value.trim();
+  if (!dest) {
+    showOutputCard('Ping', `Enter a destination IP.`, false);
+    return;
+  }
+
+  setLoading('ping-btn', true);
+  fetch('/api/ping', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      source,
+      destination: dest,
+      username: document.getElementById('ping-user').value || 'root',
+      password: document.getElementById('ping-pass').value || '',
+    })
+  })
+  .then(r => r.json())
+  .then(res => showOutputCard(`Ping ${source} → ${dest}`, res.output, res.success))
+  .catch(e => showOutputCard('Ping', `Error: ${e.message}`, false))
+  .finally(() => setLoading('ping-btn', false));
+}
+
+// ── Show Command ──────────────────────────────────────
+function setCommand(val) {
+  document.getElementById('show-command').value = val;
+  clearShowAlert();
+}
+
+function clearShowAlert() {
+  document.getElementById('show-no-device-alert').style.display = 'none';
+}
+
+function runShowCommand() {
+  const device  = document.getElementById('show-device').value;
+  const command = document.getElementById('show-command').value.trim();
+
+  if (!device) {
+    const alert = document.getElementById('show-no-device-alert');
+    alert.style.display = 'flex';
+    alert.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    return;
+  }
+
+  setLoading('show-btn', true);
+  fetch('/api/show-command', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ device, command })
+  })
+  .then(r => r.json())
+  .then(res => showOutputCard(`${device} — ${command}`, res.output, res.success))
+  .catch(e => showOutputCard(`${device} — ${command}`, `Error: ${e.message}`, false))
+  .finally(() => setLoading('show-btn', false));
+}
+
+// ── Golden Config ─────────────────────────────────────
+function toggleGcDevice() {
+  const cb = document.getElementById('gc-select-all');
+  const select = document.getElementById('gc-device');
+  select.disabled = cb.checked;
+  if (cb.checked) select.value = '';
+}
+
+function runGoldenConfig() {
+  const selectAll = document.getElementById('gc-select-all').checked;
+  const device    = document.getElementById('gc-device').value.trim();
+
+  if (!selectAll && !device) {
+    showResult('gc-result', '<span style="color:var(--color-error);">Enter a device name or select all.</span>');
+    return;
+  }
+
+  setLoading('gc-btn', true);
+  fetch('/api/golden-config', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ select_all: selectAll, device })
+  })
+  .then(r => r.json())
+  .then(res => {
+    if (!res.success) {
+      showResult('gc-result', `<span style="color:var(--color-error);">${res.message}</span>`);
+      return;
+    }
+    const list = res.files.map(f => `<li>${f}</li>`).join('');
+    showResult('gc-result', `<strong>Generated Config Files:</strong><ul style="margin-top:6px;">${list}</ul>`);
+  })
+  .catch(e => showResult('gc-result', `<span style="color:var(--color-error);">Error: ${e.message}</span>`))
+  .finally(() => setLoading('gc-btn', false));
+}
+
+// Spinner keyframe (reuse if already defined globally)
+if (!document.getElementById('tools-spin-style')) {
+  const s = document.createElement('style');
+  s.id = 'tools-spin-style';
+  s.textContent = '@keyframes spin { to { transform: rotate(360deg); } }';
+  document.head.appendChild(s);
 }
 </script>
 {% endblock %}

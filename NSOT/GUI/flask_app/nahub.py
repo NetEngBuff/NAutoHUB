@@ -1,4 +1,5 @@
 import os
+import csv
 import yaml
 import shutil
 import sys
@@ -20,6 +21,7 @@ import subprocess
 from threading import Thread
 from pathlib import Path
 import asyncio
+import socket
 import netifaces
 
 
@@ -366,15 +368,15 @@ def deploy_topology_route():
             text=True,
             check=True
         )
-        
+
         deploy_output = result.stdout
         time.sleep(2)
         update_gnmic_yaml_from_hosts()
-        
+
         # System services still require sudo, ensure NOPASSWD is set in sudoers
         subprocess.run(["sudo", "systemctl", "restart", "gnmic_nautohub.service"], check=True)
         subprocess.run(["sudo", "systemctl", "restart", "ipam.service"], check=True)
-        
+
         print("[✔] Deploy output captured successfully.")
         message = "✅ Containerlab topology deployed successfully."
 
@@ -826,93 +828,71 @@ def rollback_device():
 
 @app.route("/tools", methods=["GET", "POST"])
 def tools():
-    ping_result = None
-    config_result = None
-    show_result = None
-
-    # Fetch devices dynamically
     devices = hosts_reader.get_devices()
+    return render_template("tools.html", devices=devices)
 
-    # Handling Ping Test
-    if (
-        request.method == "POST"
-        and "source" in request.form
-        and "destination" in request.form
-    ):
-        source = request.form["source"]
-        destination = request.form["destination"]
 
-        if source == "localhost":
-            success, output = ping_local(destination)
-        else:
-            username = request.form.get("username", "root")
-            password = request.form.get("password", "password")
-            success, output = ping_remote(source, destination, username, password)
+@app.route("/api/ping", methods=["POST"])
+def api_ping():
+    data = request.get_json()
+    source = data.get("source", "").strip()
+    destination = data.get("destination", "").strip()
+    username = data.get("username", "root")
+    password = data.get("password", "password")
 
-        if success:
-            ping_result = f'<span style="color:green;">Ping successful!</span><br><pre>{output}</pre>'
-        else:
-            ping_result = (
-                f'<span style="color:red;">Ping failed.</span><br><pre>{output}</pre>'
-            )
+    if source == "localhost":
+        success, output = ping_local(destination)
+    else:
+        success, output = ping_remote(source, destination, username, password)
 
-    # Handling Golden Config Generator
-    if request.method == "POST" and (
-        "device" in request.form or "select_all" in request.form
-    ):
-        select_all = request.form.get("select_all", "off")
-        hostname = request.form.get("device")
+    return jsonify({"success": success, "output": output})
 
-        if select_all == "on":
-            filenames = generate_configs(select_all=True)
-        elif hostname:
-            filenames = generate_configs(select_all=False, hostname=hostname)
 
-        if filenames:
-            config_result = f"<h3>Generated Config Files:</h3><ul>"
-            for file in filenames:
-                config_result += f"<li>{file}</li>"
-            config_result += "</ul>"
+@app.route("/api/show-command", methods=["POST"])
+def api_show_command():
+    data = request.get_json()
+    hostname = data.get("device", "")
+    command = data.get("command", "")
 
-    if request.method == "POST" and (
-        "selected_device" in request.form
-        and (
-            any(key.endswith("-dropdown") for key in request.form)
-            or "command" in request.form
-        )
-    ):
+    if not hostname or not command:
+        return jsonify({"success": False, "output": "Device and command are required."})
 
-        hostname = request.form.get("selected_device")
-        selected_command = request.form.get("command", "")
+    success, result = execute_show_command(hostname, command)
+    return jsonify({"success": success, "output": result})
 
-        if not selected_command:
-            for key in request.form:
-                if key.endswith("-dropdown"):
-                    selected_command = request.form[key]
-                    break
 
-        success, result = execute_show_command(hostname, selected_command)
-        print(result)
-        show_result = (
-            f"<h3>Command Output:</h3><pre>{result}</pre>"
-            if success
-            else f'<span style="color:red;">Command failed: {result}</span>'
-        )
+@app.route("/api/golden-config", methods=["POST"])
+def api_golden_config():
+    data = request.get_json()
+    select_all = data.get("select_all", False)
+    hostname = data.get("device", "")
 
-    return render_template(
-        "tools.html",
-        ping_result=ping_result,
-        config_result=config_result,
-        devices=devices,
-        show_result=show_result,
-    )
+    if select_all:
+        filenames = generate_configs(select_all=True)
+    elif hostname:
+        filenames = generate_configs(select_all=False, hostname=hostname)
+    else:
+        return jsonify({"success": False, "files": [], "message": "No device specified."})
+
+    return jsonify({"success": True, "files": filenames or []})
 
 
 @app.route("/ipam")
 def ipam():
     """Route to display IPAM table."""
-    # print(f"Rendering IPAM table with data: {ipam_reader.ipam_data}")  # Debug statement
-    return render_template("ipam.html", ipam_data=ipam_reader.ipam_data)
+    return render_template("ipam.html", ipam_data=ipam_reader.ipam_data, poll_interval=ipam_reader.update_interval)
+
+
+@app.route("/ipam-data")
+def ipam_data_json():
+    """JSON endpoint returning current IPAM data, last update time, and poll interval."""
+    data = ipam_reader.ipam_data
+    last_updated = data[0].get("Timestamp", None) if data else None
+    return jsonify({
+        "data": data,
+        "last_updated": last_updated,
+        "interval": ipam_reader.update_interval,
+    })
 
 
 @app.route("/about")
@@ -965,18 +945,39 @@ def run_deployment_and_relay_config(
         )
 
 
+def _is_port_open(port, host="127.0.0.1"):
+    try:
+        with socket.create_connection((host, port), timeout=1):
+            return True
+    except OSError:
+        return False
+
+
+def _wait_for_port(port, host="127.0.0.1", timeout=12):
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        if _is_port_open(port, host):
+            return True
+        time.sleep(0.4)
+    return False
+
+
 @app.route("/topology")
 def topology():
-    try:
-        subprocess.Popen(
-            f"sudo containerlab graph -t {topo_path}",
-            shell=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        print(f"[INFO] Started containerlab graph for: {topo_path}")
-    except Exception as e:
-        print(f"[ERROR] Failed to start containerlab graph: {e}")
+    if not _is_port_open(50080):
+        try:
+            subprocess.Popen(
+                f"sudo containerlab graph -t {topo_path}",
+                shell=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            print(f"[INFO] Started containerlab graph for: {topo_path}")
+            _wait_for_port(50080)
+        except Exception as e:
+            print(f"[ERROR] Failed to start containerlab graph: {e}")
+    else:
+        print("[INFO] containerlab graph already running on :50080")
 
     try:
         gws = netifaces.gateways()
@@ -992,6 +993,52 @@ def topology():
 
 
 import docker
+
+
+@app.route("/hosts-data")
+def hosts_data():
+    """Return full host inventory from hosts.csv as JSON for the UI."""
+    hosts = []
+    hosts_csv_path = os.path.join(IPAM_DIR, "hosts.csv")
+    try:
+        with open(hosts_csv_path, newline="") as f:
+            for row in csv.DictReader(f):
+                mgmt_ip = row.get("management_ip", "")
+                subnet = row.get("subnet_cidr", "24")
+                hosts.append({
+                    "hostname": row.get("hostname", ""),
+                    "management_ip": f"{mgmt_ip}/{subnet}" if mgmt_ip else "",
+                    "username": row.get("username", ""),
+                    "password": row.get("password", ""),
+                })
+    except Exception as e:
+        print(f"[⚠] Could not read hosts.csv: {e}")
+    return jsonify(hosts)
+
+
+@app.route("/oob-network-info")
+def oob_network_info():
+    """Read netcfg.yaml and return OOB network details for the UI hint."""
+    netcfg_path = os.path.join(PILOT_DIR, "netcfg.yaml")
+    try:
+        with open(netcfg_path) as f:
+            cfg = yaml.safe_load(f)
+        vlans = cfg.get("network", {}).get("vlans", {})
+        # Find the first VLAN interface that has addresses configured
+        for iface, details in vlans.items():
+            addresses = details.get("addresses", [])
+            if addresses:
+                host_cidr = addresses[0]
+                import ipaddress
+                net = ipaddress.ip_interface(host_cidr).network
+                return jsonify({
+                    "interface": iface,
+                    "host_ip": host_cidr.split("/")[0],
+                    "subnet": str(net),
+                })
+    except Exception as e:
+        print(f"[⚠] Could not read netcfg.yaml: {e}")
+    return jsonify({"interface": None, "host_ip": None, "subnet": None})
 
 
 @app.route("/clab-health")
