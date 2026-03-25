@@ -47,26 +47,18 @@ sudo apt-get install -y openssh-server
 curl -sL https://containerlab.dev/setup | sudo bash -s "all"
 
 echo "[4/12] Installing InfluxDB 2.x..."
-# 1. Ensure curl and gnupg are there (just in case)
+# 1. Install dependencies
 sudo apt-get install -y curl gnupg
 
-# 2. Download the key using curl
-curl --silent --location -O https://repos.influxdata.com/influxdata-archive.key
+# 2. Use the Noble (24.04) repo because 'questing' doesn't exist on their server yet
+curl --silent --location https://repos.influxdata.com/influxdata-archive.key | gpg --dearmor --yes | sudo tee /etc/apt/keyrings/influxdata-archive.gpg > /dev/null
 
-# 3. Verify the fingerprint and install the key
-# This matches the secure logic from the official website
-gpg --show-keys --with-fingerprint --with-colons ./influxdata-archive.key 2>&1 \
-| grep -q '^fpr:\+24C975CBA61A024EE1B631787C3D57159FC2F927:$' \
-&& cat influxdata-archive.key \
-| gpg --dearmor --yes \
-| sudo tee /etc/apt/keyrings/influxdata-archive.gpg > /dev/null
+# 3. Hardcode 'noble' here instead of using $(lsb_release -cs)
+echo "deb [signed-by=/etc/apt/keyrings/influxdata-archive.gpg] https://repos.influxdata.com/ubuntu noble stable" | sudo tee /etc/apt/sources.list.d/influxdata.list
 
-# 4. Add the repository (using your OS codename dynamically)
-echo "deb [signed-by=/etc/apt/keyrings/influxdata-archive.gpg] https://repos.influxdata.com/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/influxdata.list
-
-# 5. Clean up the downloaded key file and install
-rm influxdata-archive.key
-sudo apt-get update && sudo apt-get install -y influxdb2
+# 4. Update and install
+sudo apt-get update
+sudo apt-get install -y influxdb2
 sudo systemctl enable --now influxdb
 
 echo "[5/12] Installing Grafana..."
