@@ -47,16 +47,21 @@ sudo apt-get install -y openssh-server
 curl -sL https://containerlab.dev/setup | sudo bash -s "all"
 
 echo "[4/12] Installing InfluxDB 2.x..."
-# 1. Install dependencies
-sudo apt-get install -y curl gnupg
+# 1. Download the key
+curl --silent --location -O https://repos.influxdata.com/influxdata-archive.key
 
-# 2. Use the Noble (24.04) repo because 'questing' doesn't exist on their server yet
-curl --silent --location https://repos.influxdata.com/influxdata-archive.key | gpg --dearmor --yes | sudo tee /etc/apt/keyrings/influxdata-archive.gpg > /dev/null
+# 2. Verify and install key (No changes needed here, your manual logic was good)
+gpg --show-keys --with-fingerprint --with-colons ./influxdata-archive.key 2>&1 \
+| grep -q '^fpr:\+24C975CBA61A024EE1B631787C3D57159FC2F927:$' \
+&& cat influxdata-archive.key \
+| gpg --dearmor --yes \
+| sudo tee /etc/apt/keyrings/influxdata-archive.gpg > /dev/null
 
-# 3. Hardcode 'noble' here instead of using $(lsb_release -cs)
-echo "deb [signed-by=/etc/apt/keyrings/influxdata-archive.gpg] https://repos.influxdata.com/ubuntu noble stable" | sudo tee /etc/apt/sources.list.d/influxdata.list
+# 3. Use the DEBIAN STABLE path (This is the fix!)
+echo 'deb [signed-by=/etc/apt/keyrings/influxdata-archive.gpg] https://repos.influxdata.com/debian stable main' | sudo tee /etc/apt/sources.list.d/influxdata.list
 
-# 4. Update and install
+# 4. Clean up and install with -y to prevent hanging
+rm -f influxdata-archive.key
 sudo apt-get update
 sudo apt-get install -y influxdb2
 sudo systemctl enable --now influxdb
