@@ -342,7 +342,7 @@ def deploy_topology_route():
     
     print("[INFO] Destroying old topology...")
     # Using result.run with capture_output=True to keep console clean
-    subprocess.run(f"containerlab destroy -t {yaml_path}", shell=True, capture_output=True, text=True)
+    subprocess.run(f"sudo containerlab destroy -t {yaml_path}", shell=True, capture_output=True, text=True)
 
     # Cleanup directory
     try:
@@ -360,7 +360,7 @@ def deploy_topology_route():
     try:
         # We capture output to prevent the "messy" terminal logs you saw earlier
         result = subprocess.run(
-            f"containerlab deploy -t {yaml_path}",
+            f"sudo containerlab deploy -t {yaml_path}",
             shell=True,
             capture_output=True,
             text=True,
@@ -399,7 +399,7 @@ def delete_topology_route():
     print("[INFO] Deleting topology...")
     try:
         result = subprocess.run(
-            f"containerlab destroy -t {yaml_path}",
+            f"sudo containerlab destroy -t {yaml_path}",
             shell=True,
             capture_output=True,
             text=True,
