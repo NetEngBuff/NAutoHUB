@@ -342,7 +342,7 @@ def deploy_topology_route():
     print("[INFO] Destroying old topology...")
     try:
         destroy_output = subprocess.check_output(
-            f"containerlab destroy -t {yaml_path}",
+            f"sudo containerlab destroy -t {yaml_path}",
             shell=True,
             stderr=subprocess.STDOUT,
             text=True,
@@ -368,7 +368,7 @@ def deploy_topology_route():
     print("[INFO] Deploying new topology...")
     try:
         deploy_output = subprocess.check_output(
-            f"containerlab deploy -t {yaml_path}",
+            f"sudo containerlab deploy -t {yaml_path}",
             shell=True,
             stderr=subprocess.STDOUT,
             text=True,
@@ -403,7 +403,7 @@ def delete_topology_route():
     print("[INFO] Deleting topology...")
     try:
         delete_output = subprocess.check_output(
-            f"containerlab destroy -t {yaml_path}",
+            f"sudo containerlab destroy -t {yaml_path}",
             shell=True,
             stderr=subprocess.STDOUT,
             text=True,
@@ -471,7 +471,7 @@ def add_device():
             os.path.join(os.path.dirname(__file__), "../../../pilot-config/topo.yml")
         )
         print("[INFO] Destroying old topology before update...")
-        os.system(f"containerlab destroy -t {topo_path} || true")
+        os.system(f"sudo containerlab destroy -t {topo_path} || true")
 
         try:
             update_topology(
@@ -501,7 +501,7 @@ def add_device():
                 print(f"⚠️ Path does not exist, skipping: {clab_path}")
 
             deploy_output = subprocess.check_output(
-                f"containerlab deploy -t {topo_path}",
+                f"sudo containerlab deploy -t {topo_path}",
                 shell=True,
                 stderr=subprocess.STDOUT,
                 text=True,
@@ -975,7 +975,7 @@ def run_deployment_and_relay_config(
 def topology():
     try:
         subprocess.Popen(
-            f"containerlab graph -t {topo_path}",
+            f"sudo containerlab graph -t {topo_path}",
             shell=True,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
