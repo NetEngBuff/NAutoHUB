@@ -83,8 +83,12 @@ sudo add-apt-repository universe -y
 sudo download-mibs || true
 
 echo "[11/12] Installing Python packages..."
-# Ensure we use the venv's pip specifically
 ./venv/bin/pip install --upgrade pip setuptools wheel
+
+# We install easysnmp separately first with a compiler flag to bypass GCC 15 strictness
+CFLAGS="-Wno-error=incompatible-pointer-types" ./venv/bin/pip install easysnmp
+
+# Then install the rest of the requirements
 ./venv/bin/pip install -r requirements.txt
 
 echo "[12/12] Finalizing Permissions..."
