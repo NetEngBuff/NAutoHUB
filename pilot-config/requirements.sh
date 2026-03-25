@@ -38,8 +38,13 @@ echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.
 sudo apt-get update
 sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
 
-echo "[3/12] Installing Containerlab..."
-curl -sL https://containerlab.dev/setup | sudo -E bash -s "all"
+echo "[3/12] Installing SSH Server and Containerlab..."
+# Install SSH first so Containerlab installer doesn't error out
+sudo apt-get update
+sudo apt-get install -y openssh-server
+
+# Now run the Containerlab installer
+curl -sL https://containerlab.dev/setup | sudo bash -s "all"
 
 echo "[4/12] Installing InfluxDB 2.x..."
 wget -q https://repos.influxdata.com/influxdata-archive_compat.key
